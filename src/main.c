@@ -24,6 +24,9 @@
 /* This function must be provided in arch specific way */
 int router_start(void);
 
+// file to be sent
+const char *file_src = NULL;
+
 void *router_task(void *param)
 {
 	while (1)
@@ -69,6 +72,7 @@ enum DeviceType
 #define __maybe_unused __attribute__((__unused__))
 
 static struct option long_options[] = {
+	{"file_src", required_argument, 0, 'f'},
 	{"kiss-device", required_argument, 0, 'k'},
 #if (CSP_HAVE_LIBSOCKETCAN)
 #define OPTION_c "c:"
@@ -118,6 +122,7 @@ void print_help()
 	{
 		csp_print(" -a <address>     set interface address\n"
 				  " -C <address>     connect to server at address\n"
+				  " -f <file src>	 source of file to be sent\n"
 				  " -t               enable test mode\n"
 				  " -T <duration>    enable test mode with running time in seconds\n"
 				  " -h               print help\n");
@@ -184,7 +189,7 @@ int main(int argc, char *argv[])
 	int ret = EXIT_SUCCESS;
 	int opt;
 
-	while ((opt = getopt_long(argc, argv, OPTION_c OPTION_z OPTION_R "k:a:C:tT:h", long_options, NULL)) != -1)
+	while ((opt = getopt_long(argc, argv, OPTION_c OPTION_z OPTION_R "k:a:C:f:tT:h", long_options, NULL)) != -1)
 	{
 		switch (opt)
 		{
@@ -199,6 +204,9 @@ int main(int argc, char *argv[])
 		case 'z':
 			device_name = optarg;
 			device_type = DEVICE_ZMQ;
+			break;
+		case 'f':
+			file_src = optarg;
 			break;
 #if (CSP_USE_RTABLE)
 		case 'R':
@@ -304,7 +312,13 @@ int main(int argc, char *argv[])
 		/* Send data packet (string) to server */
 
 		/* Send data packet (file contents) to server using POSIX I/O */
-		const char *filename = "hello_world.txt"; // The file we want to send
+		if (file_src == NULL)
+		{
+			csp_print("No file specified. Use -f <filename>\n");
+			ret = EXIT_FAILURE;
+			break;
+		}
+		FILE *fp = fopen(file_src, "rb");
 
 		/* 1. Connect to host */
 		csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, server_address, SERVER_PORT, 1000, CSP_O_NONE);
@@ -316,10 +330,10 @@ int main(int argc, char *argv[])
 		}
 
 		/* 2. Open the file using the low-level open() system call */
-		int fd = open(filename, O_RDONLY);
+		int fd = open(file_src, O_RDONLY);
 		if (fd < 0)
 		{ // On error, open() returns -1
-			csp_print("Failed to open file '%s': %s\n", filename, strerror(errno));
+			csp_print("Failed to open file '%s': %s\n", file_src, strerror(errno));
 			csp_close(conn);
 			continue;
 		}
@@ -328,14 +342,12 @@ int main(int argc, char *argv[])
 		struct stat st;
 		if (fstat(fd, &st) != 0)
 		{
-			csp_print("Failed to get size of file '%s': %s\n", filename, strerror(errno));
+			csp_print("Failed to get size of file '%s': %s\n", file_src, strerror(errno));
 			close(fd);
 			csp_close(conn);
 			continue;
 		}
 		long file_size = st.st_size;
-
-
 
 		/* 4. Get a CSP packet buffer */
 		csp_packet_t *packet = csp_buffer_get(0);
@@ -352,7 +364,7 @@ int main(int argc, char *argv[])
 		ssize_t bytes_read = read(fd, packet->data, file_size);
 		if (bytes_read < 0 || bytes_read != file_size)
 		{
-			csp_print("Error reading from file '%s': %s\n", filename, strerror(errno));
+			csp_print("Error reading from file '%s': %s\n", file_src, strerror(errno));
 			csp_buffer_free(packet);
 			close(fd);
 			csp_close(conn);
@@ -364,7 +376,7 @@ int main(int argc, char *argv[])
 		packet->length = bytes_read;
 
 		/* 7. Send packet */
-		csp_print("Sending file '%s' (%zd bytes) to %u\n", filename, packet->length, server_address);
+		csp_print("Sending file '%s' (%zd bytes) to %u\n", file_src, packet->length, server_address);
 		csp_send(conn, packet);
 
 		/* 8. Close connection */
