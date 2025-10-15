@@ -1,0 +1,4 @@
+This is an even longer example sent from client to server through DTP. 
+The server would run on the DISCO2 satellite. 
+The client would run on Ground Station.
+So no reverse client-server relationship as it seem. 

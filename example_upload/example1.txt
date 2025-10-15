@@ -1,0 +1,1 @@
+This is an example text sent from fra client to a server. 
