@@ -21,6 +21,9 @@
 #include <csp/drivers/can_socketcan.h>
 #include <csp/interfaces/csp_if_zmqhub.h>
 
+// temp variable to only send once (DEBUG)
+int hasSent = 0;
+
 /* This function must be provided in arch specific way */
 int router_start(void);
 
@@ -309,96 +312,101 @@ int main(int argc, char *argv[])
 		csp_reboot(server_address);
 		csp_print("reboot system request sent to address: %u\n", server_address);
 
-		/* Send data packet (string) to server */
-
-		/* Send data packet (file contents) to server using POSIX I/O */
-		if (file_src == NULL)
+		if (hasSent == 0)
 		{
-			csp_print("No file specified. Use -f <filename>\n");
-			ret = EXIT_FAILURE;
-			break;
-		}
-		FILE *fp = fopen(file_src, "rb");
+			/* Send data packet (string) to server */
 
-		/* 1. Connect to host */
-		csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, server_address, SERVER_PORT, 1000, CSP_O_NONE);
-		if (conn == NULL)
-		{
-			csp_print("Connection failed\n");
-			ret = EXIT_FAILURE;
-			break;
-		}
-
-		/* 2. Open the file using the low-level open() system call */
-		int fd = open(file_src, O_RDONLY);
-		if (fd < 0)
-		{ // On error, open() returns -1
-			csp_print("Failed to open file '%s': %s\n", file_src, strerror(errno));
-			csp_close(conn);
-			continue;
-		}
-
-		/* 3. Get file stats (including size) using fstat() */
-		struct stat st;
-		if (fstat(fd, &st) != 0)
-		{
-			csp_print("Failed to get size of file '%s': %s\n", file_src, strerror(errno));
-			close(fd);
-			csp_close(conn);
-			continue;
-		}
-		long file_size = st.st_size;
-
-		/* 4. Get a CSP packet buffer */
-		csp_packet_t *packet = csp_buffer_get(0);
-		if (packet == NULL)
-		{
-			csp_print("Failed to get CSP buffer\n");
-			close(fd);
-			csp_close(conn);
-			ret = EXIT_FAILURE;
-			break;
-		}
-
-		/* 5. Read the file's contents DIRECTLY into the packet using the read() system call */
-		ssize_t bytes_read = read(fd, packet->data, file_size);
-		if (bytes_read < 0 || bytes_read != file_size)
-		{
-			csp_print("Error reading from file '%s': %s\n", file_src, strerror(errno));
-			csp_buffer_free(packet);
-			close(fd);
-			csp_close(conn);
-			continue;
-		}
-		close(fd); // We are done with the file, close the file descriptor.
-
-		/* 6. Set the packet length */
-		packet->length = bytes_read;
-
-		/* 7. Send packet */
-		csp_print("Sending file '%s' (%zd bytes) to %u\n", file_src, packet->length, server_address);
-		csp_send(conn, packet);
-
-		/* 8. Close connection */
-		csp_close(conn);
-
-		/* 7. Check for elapsed time if test_mode. */
-		if (test_mode)
-		{
-			clock_gettime(CLOCK_MONOTONIC, &current_time);
-
-			/* We don't really care about the precision of it. */
-			if (current_time.tv_sec - start_time.tv_sec > run_duration_in_sec)
+			/* Send data packet (file contents) to server using POSIX I/O */
+			if (file_src == NULL)
 			{
-				/* Test mode, check that server & client can exchange packets */
-				if (successful_ping < 5)
+				csp_print("No file specified. Use -f <filename>\n");
+				ret = EXIT_FAILURE;
+				break;
+			}
+			FILE *fp = fopen(file_src, "rb");
+
+			/* 1. Connect to host */
+			csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, server_address, SERVER_PORT, 1000, CSP_O_NONE);
+			if (conn == NULL)
+			{
+				csp_print("Connection failed\n");
+				ret = EXIT_FAILURE;
+				break;
+			}
+
+			/* 2. Open the file using the low-level open() system call */
+			int fd = open(file_src, O_RDONLY);
+			if (fd < 0)
+			{ // On error, open() returns -1
+				csp_print("Failed to open file '%s': %s\n", file_src, strerror(errno));
+				csp_close(conn);
+				continue;
+			}
+
+			/* 3. Get file stats (including size) using fstat() */
+			struct stat st;
+			if (fstat(fd, &st) != 0)
+			{
+				csp_print("Failed to get size of file '%s': %s\n", file_src, strerror(errno));
+				close(fd);
+				csp_close(conn);
+				continue;
+			}
+			long file_size = st.st_size;
+
+			/* 4. Get a CSP packet buffer */
+			csp_packet_t *packet = csp_buffer_get(0);
+			if (packet == NULL)
+			{
+				csp_print("Failed to get CSP buffer\n");
+				close(fd);
+				csp_close(conn);
+				ret = EXIT_FAILURE;
+				break;
+			}
+
+			/* 5. Read the file's contents DIRECTLY into the packet using the read() system call */
+			ssize_t bytes_read = read(fd, packet->data, file_size);
+			if (bytes_read < 0 || bytes_read != file_size)
+			{
+				csp_print("Error reading from file '%s': %s\n", file_src, strerror(errno));
+				csp_buffer_free(packet);
+				close(fd);
+				csp_close(conn);
+				continue;
+			}
+			close(fd); // We are done with the file, close the file descriptor.
+
+			/* 6. Set the packet length */
+			packet->length = bytes_read;
+
+			/* 7. Send packet */
+			csp_print("Sending file '%s' (%zd bytes) to %u\n", file_src, packet->length, server_address);
+			csp_send(conn, packet);
+
+			/* 8. Close connection */
+			csp_close(conn);
+
+			hasSent = 1;
+
+			/* 7. Check for elapsed time if test_mode. */
+			if (test_mode)
+			{
+				clock_gettime(CLOCK_MONOTONIC, &current_time);
+
+				/* We don't really care about the precision of it. */
+				if (current_time.tv_sec - start_time.tv_sec > run_duration_in_sec)
 				{
+					/* Test mode, check that server & client can exchange packets */
+					if (successful_ping < 5)
+					{
+						csp_print("Client successfully pinged the server %u times\n", successful_ping);
+						ret = EXIT_FAILURE;
+						break;
+					}
 					csp_print("Client successfully pinged the server %u times\n", successful_ping);
-					ret = EXIT_FAILURE;
 					break;
 				}
-				csp_print("Client successfully pinged the server %u times\n", successful_ping);
-				break;
 			}
 		}
 	}
