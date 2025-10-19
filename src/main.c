@@ -21,6 +21,28 @@
 #include <csp/drivers/can_socketcan.h>
 #include <csp/interfaces/csp_if_zmqhub.h>
 
+#include "vmem_dtp_server.h"
+
+#include <dtp/dtp.h>
+#include <dtp/dtp_log.h>
+#include <dtp/dtp_session.h>
+
+#define PORT 10
+
+dtp_opt_session_hooks_cfg default_session_hooks;
+extern dtp_opt_session_hooks_cfg apm_session_hooks;
+
+typedef struct
+{
+	int color;
+	int resume;
+	uint32_t server;
+	unsigned int throughput;
+	unsigned int timeout;
+	unsigned int payload_id;
+	unsigned int mtu;
+} dtp_client_opts_t;
+
 // temp variable to only send once (DEBUG)
 int hasSent = 0;
 
@@ -50,6 +72,48 @@ int router_start(void)
 	}
 	csp_print("Router thread started\n");
 	return 0;
+}
+
+// Struct to pass arguments to the DTP client thread
+typedef struct
+{
+	uint32_t server_addr;
+	FILE *output_file;
+
+	int color;
+	int resume;
+	uint32_t server;
+	unsigned int throughput;
+	unsigned int timeout;
+	unsigned int payload_id;
+	unsigned int mtu;
+} dtp_thread_args_t;
+
+static void *dtp_client_worker(void *param)
+{
+	dtp_thread_args_t *opts = (dtp_thread_args_t *)param;
+	dtp_t *session;
+
+	csp_print("Starting DTP client for payload %u from server %u\n", opts->payload_id, opts->server_addr);
+
+	// Run the DTP client. This will block until the transfer is complete or fails.
+	dtp_result result = dtp_client_main(opts->server, opts->throughput, opts->timeout, opts->payload_id, opts->mtu, opts->resume, &session);
+
+	if (result == DTP_ERR)
+	{
+		csp_print("DTP client failed: %s\n", dtp_strerror(dtp_errno(NULL)));
+		// The on_end hook should be called by libdtp on failure to clean up resources.
+	}
+	else
+	{
+		csp_print("DTP client completed successfully.\n");
+		dtp_release_session(session);
+	}
+
+	// Free the thread arguments
+	free(opts);
+
+	pthread_exit(NULL);
 }
 
 /* Server port, the port the server listens on for incoming connections from the client. */
@@ -290,15 +354,114 @@ int main(int argc, char *argv[])
 
 	/* Start client work */
 	csp_print("Client started\n");
-	clock_gettime(CLOCK_MONOTONIC, &start_time);
-	count = 'A';
+
+	static csp_socket_t sock = {0};
+	sock.opts = CSP_O_RDP;
+	csp_bind(&sock, PORT);
+	csp_listen(&sock, 1); // This allows only one simultaneous connection
+
+	csp_conn_t *conn;
 
 	while (1)
 	{
-		usleep(100000);
+		if ((conn = csp_accept(&sock, 10000)) == NULL)
+		{
+			continue;
+		}
+
+		csp_packet_t *request = csp_read(conn, 50);
+
+		if (request->data[0] == UPLOAD_CLIENT_DTP_UPLOAD_REQUEST)
+		{
+			if (request->length < 5)
+			{
+				csp_print("Invalid DTP upload request: too short\n");
+			}
+			else
+			{
+				uint8_t dtp_server_addr = request->data[1];
+				uint16_t payload_id;
+				memcpy(&payload_id, &request->data[2], sizeof(uint16_t));
+				char *file_location = (char *)&request->data[4];
+
+				csp_print("DTP upload request: server %u, payload %u, file '%s'\n", dtp_server_addr, payload_id, file_location);
+
+				FILE *output_file = fopen(file_location, "wb");
+
+				if (output_file == NULL)
+				{
+					csp_print("Error: Could not create file '%s'. Errno: %d\n", file_location, errno);
+					csp_packet_t *response = csp_buffer_get(1);
+					if (response)
+					{
+						response->length = 1;
+						response->data[0] = 0; // 0 for failure
+						csp_send(conn, response);
+						csp_buffer_free(response);
+					}
+				}
+				else
+				{
+					csp_print("File '%s' created. Starting transfer.\n", file_location);
+					csp_packet_t *response = csp_buffer_get(1);
+					if (response)
+					{
+						response->length = 1;
+						response->data[0] = 1; // 1 for success
+						csp_send(conn, response);
+						csp_buffer_free(response);
+					}
+
+					dtp_thread_args_t *thread_args = malloc(sizeof(dtp_thread_args_t));
+					if (thread_args == NULL)
+					{
+						csp_print("Failed to allocate memory for thread args\n");
+						fclose(output_file);
+					}
+					else
+					{
+						thread_args->server_addr = dtp_server_addr;
+						thread_args->payload_id = payload_id;
+						thread_args->output_file = output_file;
+
+						pthread_t dtp_thread;
+						if (pthread_create(&dtp_thread, NULL, dtp_client_worker, thread_args) != 0)
+						{
+							csp_print("Failed to start DTP client thread\n");
+							fclose(output_file);
+							free(thread_args);
+						}
+						else
+						{
+							pthread_detach(dtp_thread); // Run thread in the background
+						}
+					}
+				}
+
+				/*
+				if (file = attempt_create_file(request->file_location))
+				{
+					// File created succesfully
+					file_to_write_to = file; // Persist the name of the file which the current upload is writing to
+					// Run dtp_client_main, see: https://github.com/spaceinventor/libdtp/blob/master/include/dtp/dtp.h
+					// Similar to how its done in the dipp apm: https://github.com/discosat/dipp-apm/blob/main/src/dtp_client_apm.c
+					dtp_client_main(dtp_server_addr, payload_id, ...);
+				}
+				else
+				{
+					// Couldn't create file
+					response = csp_buffer_get;
+					response->data = file location invalid;
+					csp_send(response);
+				}
+					*/
+			}
+
+			usleep(100000);
+		}
+
+		/* Wait for execution to end (ctrl+c) */
+
+		return ret;
 	}
-
-	/* Wait for execution to end (ctrl+c) */
-
-	return ret;
 }
