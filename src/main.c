@@ -31,7 +31,6 @@
 dtp_opt_session_hooks_cfg default_session_hooks;
 extern dtp_opt_session_hooks_cfg apm_session_hooks;
 
-
 /* This function must be provided in arch specific way */
 int router_start(void);
 
@@ -423,6 +422,13 @@ int main(int argc, char *argv[])
 			}
 
 			usleep(100000);
+		}
+		else
+		{
+			if (request != NULL)
+			{
+				printf("some request received\n");
+			}
 		}
 
 		/* Wait for execution to end (ctrl+c) */
