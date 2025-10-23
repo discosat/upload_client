@@ -26,7 +26,7 @@
 #include "dtp/dtp_log.h"
 #include "dtp/dtp_session.h"
 
-#define PORT 10
+#define PORT 13
 
 dtp_opt_session_hooks_cfg default_session_hooks;
 extern dtp_opt_session_hooks_cfg apm_session_hooks;
