@@ -11,11 +11,13 @@ project('upload_client', 'c', version: '0.1.0', subproject_dir: 'lib',
 
 sources = files(
     'src/main.c',
+    'src/protobuf/uploadmetadata.pb-c.c',
 )
 
 dirs = include_directories(
     'src/include',
     'src/include/vmem',
+    'src/include/protobuf',
 )
 
 csp_dep = dependency('csp', fallback: ['csp', 'csp_dep'])
