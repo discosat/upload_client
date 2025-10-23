@@ -352,84 +352,76 @@ int main(int argc, char *argv[])
 		}
 
 		csp_packet_t *request = csp_read(conn, 50);
+		printf("\t%s - [DEBUG] Reading packet from connection... %s\n", "\x1B[33m", "\x1B[0m");
 
-		if (request->data[0] == UPLOAD_CLIENT_DTP_UPLOAD_REQUEST)
+		if (request->length < 5)
 		{
-			if (request->length < 5)
-			{
-				csp_print("Invalid DTP upload request: too short\n");
-			}
-			else
-			{
-				uint8_t dtp_server_addr = request->data[1];
-				uint16_t payload_id;
-				memcpy(&payload_id, &request->data[2], sizeof(uint16_t));
-				char *file_location = (char *)&request->data[4];
-
-				csp_print("DTP upload request: server %u, payload %u, file '%s'\n", dtp_server_addr, payload_id, file_location);
-
-				FILE *output_file = fopen(file_location, "wb");
-
-				if (output_file == NULL)
-				{
-					csp_print("Error: Could not create file '%s'\n", file_location);
-					csp_packet_t *response = csp_buffer_get(1);
-					if (response)
-					{
-						response->length = 1;
-						response->data[0] = 0; // 0 for failure
-						csp_send(conn, response);
-						csp_buffer_free(response);
-					}
-				}
-				else
-				{
-					csp_print("File '%s' created. Starting transfer.\n", file_location);
-					csp_packet_t *response = csp_buffer_get(1);
-					if (response)
-					{
-						response->length = 1;
-						response->data[0] = 1; // 1 for success
-						csp_send(conn, response);
-						csp_buffer_free(response);
-					}
-
-					dtp_thread_args_t *thread_args = malloc(sizeof(dtp_thread_args_t));
-					if (thread_args == NULL)
-					{
-						csp_print("Failed to allocate memory for thread args\n");
-						fclose(output_file);
-					}
-					else
-					{
-						thread_args->server_addr = dtp_server_addr;
-						thread_args->payload_id = payload_id;
-						thread_args->output_file = output_file;
-
-						pthread_t dtp_thread;
-						if (pthread_create(&dtp_thread, NULL, dtp_client_worker, thread_args) != 0)
-						{
-							csp_print("Failed to start DTP client thread\n");
-							fclose(output_file);
-							free(thread_args);
-						}
-						else
-						{
-							pthread_detach(dtp_thread); // Run thread in the background
-						}
-					}
-				}
-			}
-
-			usleep(100000);
+			csp_print("Invalid DTP upload request: too short\n");
 		}
 		else
 		{
-			if (request != NULL)
+			printf("\t%s - [DEBUG] Valid DTP request. %s\n", "\x1B[33m", "\x1B[0m");
+			uint8_t dtp_server_addr = request->data[1];
+			uint16_t payload_id;
+			memcpy(&payload_id, &request->data[2], sizeof(uint16_t));
+			char *file_location = (char *)&request->data[4];
+
+			csp_print("DTP upload request: server %u, payload %u, file '%s'\n", dtp_server_addr, payload_id, file_location);
+
+			FILE *output_file = fopen(file_location, "wb");
+
+			if (output_file == NULL)
 			{
-				printf("some request received\n");
+				csp_print("Error: Could not create file '%s'\n", file_location);
+				csp_packet_t *response = csp_buffer_get(1);
+				if (response)
+				{
+					response->length = 1;
+					response->data[0] = 0; // 0 for failure
+					csp_send(conn, response);
+					csp_buffer_free(response);
+				}
+			}
+			else
+			{
+				csp_print("File '%s' created. Starting transfer.\n", file_location);
+				csp_packet_t *response = csp_buffer_get(1);
+				if (response)
+				{
+					response->length = 1;
+					response->data[0] = 1; // 1 for success
+					csp_send(conn, response);
+					csp_buffer_free(response);
+				}
+
+				dtp_thread_args_t *thread_args = malloc(sizeof(dtp_thread_args_t));
+				if (thread_args == NULL)
+				{
+					csp_print("Failed to allocate memory for thread args\n");
+					fclose(output_file);
+				}
+				else
+				{
+					thread_args->server_addr = dtp_server_addr;
+					thread_args->payload_id = payload_id;
+					thread_args->output_file = output_file;
+
+					pthread_t dtp_thread;
+					if (pthread_create(&dtp_thread, NULL, dtp_client_worker, thread_args) != 0)
+					{
+						csp_print("Failed to start DTP client thread\n");
+						fclose(output_file);
+						free(thread_args);
+					}
+					else
+					{
+						pthread_detach(dtp_thread); // Run thread in the background
+					}
+				}
 			}
 		}
+
+		usleep(100000);
 
 		/* Wait for execution to end (ctrl+c) */
 
