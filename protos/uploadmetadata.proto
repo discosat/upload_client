@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+message UploadMetadataItem {
+  // Destination file path on the client. Example: "/tmp/data/module.so"
+  string file_location = 1;
+
+  uint32 dtp_server_address = 2;
+
+  uint32 payload_id = 3;
+
+  // Using fixed32 is efficient for 32-bit checksums like CRC32.
+  // For larger hashes like SHA-256, you might use the 'bytes' type instead.
+  fixed32 checksum = 4;
+}
+
+message UploadMetadata {
+    repeated UploadMetadataItem items = 1;
+}

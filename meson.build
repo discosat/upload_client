@@ -21,7 +21,8 @@ dirs = include_directories(
 csp_dep = dependency('csp', fallback: ['csp', 'csp_dep'])
 m_dep = meson.get_compiler('c').find_library('m', required : false)
 dtp_client_dep = dependency('dtp_client', fallback: ['dtp', 'dtp_client_dep'], required: true)
-deps = [csp_dep, dtp_client_dep, m_dep]
+proto_c_dep = dependency('libprotobuf-c', fallback: ['protobuf-c', 'proto_c_dep'])
+deps = [csp_dep, dtp_client_dep, proto_c_dep, m_dep]
 
 c_args = ['-DHOSTNAME="@0@"'.format(get_option('hostname'))]
 
