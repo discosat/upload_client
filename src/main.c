@@ -10,7 +10,6 @@
 #include <time.h>
 #include <pthread.h>
 #include <stdio.h>
-#include <errno.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -23,28 +22,15 @@
 
 #include "vmem_dtp_server.h"
 
-#include <dtp/dtp.h>
-#include <dtp/dtp_log.h>
-#include <dtp/dtp_session.h>
+#include "dtp/dtp.h"
+#include "dtp/dtp_log.h"
+#include "dtp/dtp_session.h"
 
 #define PORT 10
 
 dtp_opt_session_hooks_cfg default_session_hooks;
 extern dtp_opt_session_hooks_cfg apm_session_hooks;
 
-typedef struct
-{
-	int color;
-	int resume;
-	uint32_t server;
-	unsigned int throughput;
-	unsigned int timeout;
-	unsigned int payload_id;
-	unsigned int mtu;
-} dtp_client_opts_t;
-
-// temp variable to only send once (DEBUG)
-int hasSent = 0;
 
 /* This function must be provided in arch specific way */
 int router_start(void);
@@ -125,7 +111,6 @@ static uint8_t client_address = 0;
 
 /* Test mode, check that server & client can exchange packets */
 static bool test_mode = false;
-static unsigned int successful_ping = 0;
 static unsigned int run_duration_in_sec = 3;
 
 enum DeviceType
@@ -251,8 +236,6 @@ int main(int argc, char *argv[])
 	enum DeviceType device_type = DEVICE_UNKNOWN;
 	const char *rtable __maybe_unused = NULL;
 	csp_iface_t *default_iface;
-	struct timespec start_time;
-	unsigned int count;
 	int ret = EXIT_SUCCESS;
 	int opt;
 
@@ -390,7 +373,7 @@ int main(int argc, char *argv[])
 
 				if (output_file == NULL)
 				{
-					csp_print("Error: Could not create file '%s'. Errno: %d\n", file_location, errno);
+					csp_print("Error: Could not create file '%s'\n", file_location);
 					csp_packet_t *response = csp_buffer_get(1);
 					if (response)
 					{
@@ -437,24 +420,6 @@ int main(int argc, char *argv[])
 						}
 					}
 				}
-
-				/*
-				if (file = attempt_create_file(request->file_location))
-				{
-					// File created succesfully
-					file_to_write_to = file; // Persist the name of the file which the current upload is writing to
-					// Run dtp_client_main, see: https://github.com/spaceinventor/libdtp/blob/master/include/dtp/dtp.h
-					// Similar to how its done in the dipp apm: https://github.com/discosat/dipp-apm/blob/main/src/dtp_client_apm.c
-					dtp_client_main(dtp_server_addr, payload_id, ...);
-				}
-				else
-				{
-					// Couldn't create file
-					response = csp_buffer_get;
-					response->data = file location invalid;
-					csp_send(response);
-				}
-					*/
 			}
 
 			usleep(100000);
