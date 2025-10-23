@@ -1,4 +1,13 @@
-project('upload_client', 'c', version: '0.1.0', subproject_dir: 'lib')
+project('upload_client', 'c', version: '0.1.0', subproject_dir: 'lib',
+    default_options: [
+		'c_std=gnu11',
+		'b_lto=false',
+		'default_library=static',
+		'param:have_fopen=true',
+		'param:list_dynamic=true',
+		'param:vmem_fram=false',
+	],
+)
 
 sources = files(
     'src/main.c',
@@ -6,11 +15,13 @@ sources = files(
 
 dirs = include_directories(
     'src/include',
+    'src/include/vmem',
 )
 
-csp_dep = dependency('csp', fallback: ['libcsp', 'csp_dep'])
+csp_dep = dependency('csp', fallback: ['csp', 'csp_dep'])
 m_dep = meson.get_compiler('c').find_library('m', required : false)
-deps = [csp_dep, m_dep]
+dtp_server_dep = dependency('dtp_server', fallback: ['dtp', 'dtp_server_dep'])
+deps = [csp_dep, dtp_server_dep, m_dep]
 
 c_args = ['-DHOSTNAME="@0@"'.format(get_option('hostname'))]
 
